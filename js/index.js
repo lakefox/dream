@@ -1,80 +1,93 @@
-async function findLinks() {
+function getPost() {
+    let url = document.querySelector("#postURL").value;
+    url = url.replace("https://decode.sh/", "https://decode.sh/raw/");
+
+    fetch(`https://cors.lowsh.workers.dev/?${url}`).then(e => e.json()).then((data) => {
+        console.log(data);
+        parse(data);
+    })
+}
+
+function parse(data) {
+    let content = data.content.split("\n").filter(e => e != "");
+    let pages = [{ title: false, lines: [] }];
+    for (let i = 0; i < content.length; i++) {
+        if (content[i].slice(0, 4) == "### ") {
+            pages.push({
+                title: content[i].slice(4).trim(),
+                lines: []
+            });
+        } else {
+            let images = (content[i]
+                .match(/!\[[^\]]*\]\((?<filename>.*?)(?=\"|\))(?<optionalpart>\".*\")?\)/g) || [])
+                .map((e) => {
+                    let a = e.slice(2, -1).split('](');
+                    return { name: a[0], url: a[1] };
+                });
+            if (images.length > 0) {
+                if (pages[pages.length - 1].images == undefined) {
+                    pages[pages.length - 1].images = []
+                }
+                pages[pages.length - 1].images.push(...images);
+                content[i] = content[i].replace(/!\[[^\]]*\]\((?<filename>.*?)(?=\"|\))(?<optionalpart>\".*\")?\)/g, "");
+            }
+            if (content[i].trim() != "") {
+                pages[pages.length - 1].lines.push(content[i]);
+            }
+        }
+    }
+    if (pages[0].title == "" && pages[0].lines.length == 0) {
+        pages.shift();
+    }
+    posts(pages);
+}
+
+function posts(pages) {
     hide("#qs");
-    show("#searching");
-    let counter = new vardom("#linksFound");
-    let query = new vardom("#query");
-    counter(0);
-    query("");
-    let questions = document.querySelector("#questions").value.trim().replace(/\n+/g,"\n").split("\n");
-    let searchRes = {};
-    for (let i = 0; i < questions.length; i++) {
-        query(questions[i]);
-        let res = await search(questions[i]);
-        let cv = counter() + res.length;
-        counter(cv);
-        searchRes[questions[i]] = res.slice(0,3);
-    }
-    getArticles(searchRes);
-}
-
-async function getArticles(searchRes) {
-    hide("#searching");
-    show("#fetching");
-    let artName = new vardom("#articlename");
-    let read = new vardom("#articlesread");
-    artName("");
-    read(0);
-    let keys = Object.keys(searchRes);
-    for (let a = 0; a < keys.length; a++) {
-        for (let b = 0; b < searchRes[keys[a]].length; b++) {
-            const element = searchRes[keys[a]][b];
-            artName(element.title);
-            let report = await genReport(element.url);
-            searchRes[keys[a]][b] = report;
-            searchRes[keys[a]][b].citation = citation([report])[0];
-            read(read()+1);
+    show("#posts");
+    console.log(pages);
+    let all = powerSet(pages);
+    let store = [];
+    let logoImage = new Image();
+    logoImage.onload = ()=>{
+        for (let a = 0; a < all.length; a++) {
+            const posts = all[a];
+            console.log(posts);
+            let canvas = document.createElement("canvas");
+            document.querySelector("#images").appendChild(canvas);
+            let d = new Draft();
+            let can = document.querySelector("#images").children[document.querySelector("#images").children.length - 1];
+            d.init(can, can.getContext("2d"), 1080, 1080, "#000");
+            d.image("logo", logoImage, 1030, 930, 50, 150);
+            for (let b = 0; b < posts.length; b++) {
+                const post = posts[b];
+                header(d, b, 200*b, post.title, 100);
+            }
+            d.draw();
+            store.push(canvas);
         }
     }
-    console.log(searchRes);
-    printArticles(searchRes);
+    logoImage.src = "https://api.low.sh/api/files/4z6s7kmtcmrmcd9/9shvjd8d8vqniet/favicon_48cIXA3wgd.png";
 }
 
-function printArticles(results) {
-    hide("#fetching");
-    show("#summaries");
-    let html = "";
-    let keys = Object.keys(results);
-    for (let a = 0; a < keys.length; a++) {
-        html += `<h1>${keys[a]}</h1>`;
-        let first = results[keys[a]][0];
-        html += `<h2><a href="${first.url}" target="_blank">${first.title}</a></h2>
-        <p>${first.summaries.map(e => `<span class="sent" style="background: ${randomColor({luminosity: "light"})};">${e}</span>`).join(" ")}</p>`;
-        for (let b = 1; b < results[keys[a]].length; b++) {
-            let el = results[keys[a]][b];
-            html += `
-            <details>
-  <summary><a href="${el.url}" target="_blank">${el.title}</a></summary>
-  <p>${el.summaries.map(e => `<span class="sent" style="background: ${randomColor({luminosity: "light"})};">${e}</span>`).join(" ")}</p>
-</details>`;
-            
+function header(d, index, yoffset, text, size) {
+    let width = d.measureText(text, `${size}px 'Arial Black'`);
+    if (width.width > 780) {
+        for (let i = size; size > 0; i--) {
+            size = i;
+            width = d.measureText(text, `${size}px 'Arial Black'`);
+            if (width.width < 780) {
+                break;
+            }
         }
-        html += "<br><br><br>";
     }
-    document.querySelector("#results").innerHTML = html;
+    d.text("h"+index, text, 100, 200+yoffset, `${size}px 'Arial Black'`, "#fff");
+    d.rect("hl"+index, 100, 235+yoffset, Math.min(text.length*size, 880), 20, "#fff");
+    return size;
 }
 
-function vardom(e) {
-    return eval(`((i) =>{
-    if (typeof i != "undefined") {
-      this.v = i;
-      var m = document.querySelectorAll("`+ e + `");
-      for (var a = 0; a < m.length; a++) {
-        m[a].innerHTML = i;
-      }
-    } else {
-      return this.v;
-    }
-  });`);
+function paragraph(d, index, yoffset, text, size) {
+
 }
 
 function hide(el) {
@@ -83,4 +96,22 @@ function hide(el) {
 
 function show(el) {
     document.querySelector(el).style.display = "block";
+}
+
+function powerSet(list) {
+    var set = [],
+        listSize = list.length,
+        combinationsCount = (1 << listSize),
+        combination;
+
+    for (var i = 1; i < combinationsCount; i++) {
+        var combination = [];
+        for (var j = 0; j < listSize; j++) {
+            if ((i & (1 << j))) {
+                combination.push(list[j]);
+            }
+        }
+        set.push(combination);
+    }
+    return set;
 }
