@@ -111,4 +111,9 @@ a {
 canvas {
     width: calc((100% / 4) - 10px);
     margin: 5px;
+    cursor: pointer;
+}
+
+.big {
+    width: calc(100% - 11px);
 }

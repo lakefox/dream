@@ -52,17 +52,20 @@ function posts(pages) {
     logoImage.onload = ()=>{
         for (let a = 0; a < all.length; a++) {
             const posts = all[a];
-            console.log(posts);
+            console.log(posts, a);
             let canvas = document.createElement("canvas");
+            canvas.onclick = (e) => {
+                e.srcElement.classList.toggle("big");
+            }
             document.querySelector("#images").appendChild(canvas);
             let d = new Draft();
             let can = document.querySelector("#images").children[document.querySelector("#images").children.length - 1];
             d.init(can, can.getContext("2d"), 1080, 1080, "#000");
             d.image("logo", logoImage, 1030, 930, 50, 150);
-            for (let b = 0; b < posts.length; b++) {
-                const post = posts[b];
-                header(d, b, 200*b, post.title, 100);
-            }
+            
+            doc(d, posts, 100, 100, 880, 880);
+
+
             d.draw();
             store.push(canvas);
         }
@@ -70,24 +73,46 @@ function posts(pages) {
     logoImage.src = "https://api.low.sh/api/files/4z6s7kmtcmrmcd9/9shvjd8d8vqniet/favicon_48cIXA3wgd.png";
 }
 
-function header(d, index, yoffset, text, size) {
-    let width = d.measureText(text, `${size}px 'Arial Black'`);
-    if (width.width > 780) {
-        for (let i = size; size > 0; i--) {
-            size = i;
-            width = d.measureText(text, `${size}px 'Arial Black'`);
-            if (width.width < 780) {
-                break;
-            }
-        }
-    }
-    d.text("h"+index, text, 100, 200+yoffset, `${size}px 'Arial Black'`, "#fff");
-    d.rect("hl"+index, 100, 235+yoffset, Math.min(text.length*size, 880), 20, "#fff");
-    return size;
+function header(d, index, yoffset, width, text, size) {
+    
+    d.text("h"+index, text, 100, yoffset, `${size}px 'Arial Black'`, "#fff");
+    let lineSize = parseInt(size/5);
+    d.rect("hl"+index, 100, lineSize+5+yoffset, Math.min(text.length*size, width), lineSize, "#fff");
+    return yoffset + size + lineSize;
 }
 
-function paragraph(d, index, yoffset, text, size) {
+function h(max, num) {
+    return (max/6)*num;
+}
 
+function paragraph(d, text, width, height) {
+    let lines = [];
+    let size = 50;
+    
+    for (let a = size; a > 0; a--) {
+        lines = [];
+        let current = "";
+        for (let i = 0; i < text.length; i++) {
+            let mt = d.measureText(current, `${a}px 'Arial Black'`).width;
+            if (mt > width) {
+                if (current[current.length-1] != " ") {
+                    lines.push(current.slice(0,current.lastIndexOf(" ")).trim());
+                    current = current.slice(current.lastIndexOf(" "));
+                } else {
+                    lines.push(current.trim());
+                    current = "";
+                }
+            }
+            current += text[i];
+        }
+        lines.push(current.trim());
+        if ((lines.length*a) < height) {
+            size = parseInt(a);
+            break;
+        }
+    }
+    lines = lines.filter(e=>e!="");
+    return {lines, size};
 }
 
 function hide(el) {
@@ -96,6 +121,20 @@ function hide(el) {
 
 function show(el) {
     document.querySelector(el).style.display = "block";
+}
+
+function getMax(d, text, maxWidth, size) {
+    let width = d.measureText(text, `${size}px 'Arial Black'`);
+    if (width.width > maxWidth) {
+        for (let i = size; size > 0; i--) {
+            size = i;
+            width = d.measureText(text, `${size}px 'Arial Black'`);
+            if (width.width < maxWidth) {
+                break;
+            }
+        }
+    }
+    return size;
 }
 
 function powerSet(list) {
@@ -114,4 +153,41 @@ function powerSet(list) {
         set.push(combination);
     }
     return set;
+}
+
+async function doc(d, sections, x, y, width, height, maxHeader=70, maxParagraph=35) {
+    let innerWidth = width-x;
+    let innerHeight = height-y;
+    let sectionHeight = innerHeight/sections.length;
+    for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
+        let headerOffset = y;
+        if (section.title) {
+            let hSize = Math.min(getMax(d, section.title, innerWidth, maxHeader),sectionHeight/6);
+            headerOffset = header(d, `${i}-${0}`, (sectionHeight*i)+y, innerWidth, section.title, hSize);   
+        }
+        let text = section.lines.join(" ");
+        let codeBlocks = [...text.matchAll(/\`\`\`(.*)\`\`\`/g, "")];
+        console.log(codeBlocks);
+        text = text.replace(/\`\`\`(.*)\`\`\`/g, "");
+        text = text.replace(/\`/g,"");
+        let codeHeight = 0;
+        let codeCan = false;
+        if (codeBlocks.length > 0) {
+            if (codeBlocks[0][1].split(" ")[0] == "javascript") {
+                codeCan = document.createElement("canvas");
+                let k = new kod();
+                await k.init(codeCan, "javascript", "atom-one-dark", "#212121");
+                codeHeight = await k.print(codeBlocks[0][1].slice(11));
+            }
+        }
+        console.log(codeBlocks);
+        console.log(codeHeight);
+
+        let {lines, size} = paragraph(d, text, innerWidth, ((sectionHeight-y)-20)-codeHeight);
+
+        for (let b = 0; b < lines.length; b++) {
+            d.text(`p${i}-${b}`, lines[b], x, headerOffset+(size*b)+30, `${size}px 'Arial Black'`, "#fff");
+        }
+    }
 }
