@@ -49,7 +49,7 @@ function posts(pages) {
     let all = powerSet(pages);
     let store = [];
     let logoImage = new Image();
-    logoImage.onload = ()=>{
+    logoImage.onload = async ()=>{
         for (let a = 0; a < all.length; a++) {
             const posts = all[a];
             console.log(posts, a);
@@ -63,7 +63,7 @@ function posts(pages) {
             d.init(can, can.getContext("2d"), 1080, 1080, "#000");
             d.image("logo", logoImage, 1030, 930, 50, 150);
             
-            doc(d, posts, 100, 100, 880, 880);
+            await doc(d, posts, 100, 100, 880, 880);
 
 
             d.draw();
@@ -156,38 +156,56 @@ function powerSet(list) {
 }
 
 async function doc(d, sections, x, y, width, height, maxHeader=70, maxParagraph=35) {
-    let innerWidth = width-x;
-    let innerHeight = height-y;
-    let sectionHeight = innerHeight/sections.length;
+    let sectionHeight = height/sections.length;
+    // make this function turn the sections into json docs with a config object then render
+    let config = {
+        p: {
+            margin: 20
+        }
+    }
     for (let i = 0; i < sections.length; i++) {
         const section = sections[i];
         let headerOffset = y;
         if (section.title) {
-            let hSize = Math.min(getMax(d, section.title, innerWidth, maxHeader),sectionHeight/6);
-            headerOffset = header(d, `${i}-${0}`, (sectionHeight*i)+y, innerWidth, section.title, hSize);   
+            let hSize = Math.min(getMax(d, section.title, width, maxHeader),sectionHeight/6);
+            headerOffset = header(d, `${i}-${0}`, (sectionHeight*i)+y, width, section.title, hSize);   
         }
-        let text = section.lines.join(" ");
-        let codeBlocks = [...text.matchAll(/\`\`\`(.*)\`\`\`/g, "")];
+        let text = section.lines.join("\n");
+        let codeBlocks = [...text.matchAll(/\`\`\`(.*?)\`\`\`/gs, "")];
         console.log(codeBlocks);
-        text = text.replace(/\`\`\`(.*)\`\`\`/g, "");
+        text = text.replace(/\`\`\`(.*?)\`\`\`/gs, "");
         text = text.replace(/\`/g,"");
         let codeHeight = 0;
         let codeCan = false;
         if (codeBlocks.length > 0) {
-            if (codeBlocks[0][1].split(" ")[0] == "javascript") {
-                codeCan = document.createElement("canvas");
-                let k = new kod();
-                await k.init(codeCan, "javascript", "atom-one-dark", "#212121");
-                codeHeight = await k.print(codeBlocks[0][1].slice(11));
+            codeCan = document.createElement("canvas");
+            let k = new kod();
+            let lang = codeBlocks[0][1].split("\n")[0];
+            await k.init(codeCan, lang, "atom-one-dark", "#0c0c0c");
+            let codeSize = await k.print(codeBlocks[0][1].slice(lang.length));
+            let codeWidth = width;
+            if (codeSize.width < width) {
+                codeWidth = codeSize.width;
+                codeHeight = codeSize.height;
+            } else {
+                codeHeight = (width/codeSize.width)*codeSize.height;
             }
+
+            if (codeHeight > sectionHeight/2) {
+                codeHeight = sectionHeight/2;
+                codeWidth = (codeHeight/codeSize.height)*codeSize.width;
+            }
+            
+            d.image(`kod${i}-${0}`, codeCan, x, headerOffset-20, codeWidth, codeHeight);
+            d.z(`kod${i}-${0}`, 10);
         }
         console.log(codeBlocks);
         console.log(codeHeight);
 
-        let {lines, size} = paragraph(d, text, innerWidth, ((sectionHeight-y)-20)-codeHeight);
+        let {lines, size} = paragraph(d, text, width, Math.max(((sectionHeight-y))-codeHeight-config.p.margin, 0));
 
         for (let b = 0; b < lines.length; b++) {
-            d.text(`p${i}-${b}`, lines[b], x, headerOffset+(size*b)+30, `${size}px 'Arial Black'`, "#fff");
+            d.text(`p${i}-${b}`, lines[b], x, headerOffset+codeHeight+config.p.margin+(size*b), `${size}px 'Arial'`, "#fff");
         }
     }
 }
